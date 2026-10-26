@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#2b1d6b" />
+    <title>한자 마법사 대모험</title>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <video id="camera" playsinline muted></video>
+
+    <div id="status" class="status" hidden></div>
+    <pre id="debug" class="debug" hidden></pre>
+
+    <div id="start" class="overlay">
+      <div class="title-card">
+        <div class="title-hanja">火 水 山</div>
+        <h1>한자 마법사 대모험</h1>
+        <p class="subtitle">1단계 · 카메라 확인</p>
+        <button id="start-btn" class="big-btn" type="button">시작</button>
+        <p id="start-msg" class="msg"></p>
+        <p class="privacy">카메라 영상은 이 기기 안에서만 처리되고, 저장하거나 보내지 않아요.</p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

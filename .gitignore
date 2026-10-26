@@ -1,0 +1,6 @@
+node_modules
+dist
+public/mediapipe/wasm
+.vercel
+*.log
+.DS_Store
