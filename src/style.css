@@ -139,3 +139,20 @@ h1 {
   pointer-events: none;
   white-space: pre;
 }
+
+.rec-btn {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  padding: 10px 16px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  font: 700 16px/1 system-ui, sans-serif;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.rec-btn.on {
+  background: #e53935;
+}

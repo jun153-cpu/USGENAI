@@ -13,6 +13,9 @@ interface DebugInfo {
   fullBody: FullBodyStatus;
   video: HTMLVideoElement;
   device: DeviceFeatures;
+  /** 현재 장면이 보여주는 판정 상태 */
+  extra: string[];
+  koreanVoice: boolean;
 }
 
 const ANGLES: Array<[string, number, number, number]> = [
@@ -44,7 +47,8 @@ export class DebugOverlay {
     const lines = [
       `화면 ${info.renderFps.toFixed(0)}fps | 추론 ${tracker.inferenceFps.toFixed(1)}fps${lowFps ? ' ⚠느림' : ''} (${tracker.inferenceMs.toFixed(1)}ms) ${tracker.delegate}`,
       `영상 ${video.videoWidth}x${video.videoHeight} | 전신: ${info.fullBody}`,
-      `전체화면 ${check(device.fullscreen)} 가로고정 ${check(device.landscapeLock)} 화면유지 ${check(device.wakeLock)}`,
+      `전체화면 ${check(device.fullscreen)} 가로고정 ${check(device.landscapeLock)} 화면유지 ${check(device.wakeLock)} 한국어음성 ${check(info.koreanVoice)}`,
+      ...info.extra,
       '',
     ];
 

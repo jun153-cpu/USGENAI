@@ -1,11 +1,19 @@
 import './style.css';
 import { THRESHOLDS } from './config/thresholds';
+import { installKeyboard } from './dev/keyboardInput';
+import { App, type Flow, type Gfx, type Tick } from './game/app';
+import { CalibrateScene } from './game/scenes/calibrate';
+import { PracticeScene } from './game/scenes/practice';
+import { ReadyScene } from './game/scenes/ready';
 import { describeCameraError, startCamera } from './platform/camera';
 import { deviceFeatures, enterPlayMode } from './platform/device';
+import { unlockAudio } from './platform/sfx';
+import { hasKoreanVoice, unlockSpeech } from './platform/speech';
 import { checkFullBody, type FullBodyStatus, type PoseFrame } from './pose/landmarks';
+import { PoseRecognizer } from './pose/poseRecognizer';
 import { PoseTracker } from './pose/poseTracker';
-import { drawCameraView } from './ui/cameraPreview';
 import { DebugOverlay, isDebug } from './ui/debugOverlay';
+import { Recorder } from './ui/recorder';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
@@ -15,47 +23,50 @@ const startBtn = document.getElementById('start-btn') as HTMLButtonElement;
 const startMsg = document.getElementById('start-msg')!;
 const statusEl = document.getElementById('status')!;
 const debug = new DebugOverlay(document.getElementById('debug')!);
+const recorder = isDebug ? new Recorder(document.body) : null;
 
-const STATUS_TEXT: Record<FullBodyStatus, string> = {
-  ok: '전신이 보여요! 준비 완료 ✨',
-  noPerson: '카메라 앞에 서 주세요',
-  feetHidden: '발까지 보이게 뒤로 가 주세요',
-  headHidden: '머리까지 보이게 해 주세요',
-  partial: '몸 전체가 보이게 서 주세요',
-};
-
-let viewW = 0;
-let viewH = 0;
+const gfx: Gfx = { ctx, w: 0, h: 0, video };
 
 function resize(): void {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  viewW = window.innerWidth;
-  viewH = window.innerHeight;
-  canvas.width = Math.round(viewW * dpr);
-  canvas.height = Math.round(viewH * dpr);
+  gfx.w = window.innerWidth;
+  gfx.h = window.innerHeight;
+  canvas.width = Math.round(gfx.w * dpr);
+  canvas.height = Math.round(gfx.h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 window.addEventListener('resize', resize);
 resize();
 
+const app = new App();
+const flow: Flow = {
+  toCalibrate: () => app.goto(new CalibrateScene(flow)),
+  toPractice: (profile) => app.goto(new PracticeScene(new PoseRecognizer(profile))),
+};
+
+canvas.addEventListener('pointerdown', () => app.scene?.onTap?.());
+installKeyboard((key) => app.scene?.onKey?.(key));
+
 function runLoop(tracker: PoseTracker): void {
   let frame: PoseFrame | null = null;
   let lastSeen = -Infinity;
-  let status: FullBodyStatus = 'noPerson';
-  let fpsStart = performance.now();
+  let body: FullBodyStatus = 'noPerson';
+  let lastNow = performance.now();
+  let fpsStart = lastNow;
   let fpsCount = 0;
   let renderFps = 0;
 
   const tick = (now: number) => {
-    const next = tracker.detect(video, now);
-    if (next) {
-      frame = next;
-      if (next.landmarks) {
+    const newFrame = tracker.detect(video, now);
+    if (newFrame) {
+      frame = newFrame;
+      recorder?.push(newFrame);
+      if (newFrame.landmarks) {
         lastSeen = now;
-        status = checkFullBody(next.landmarks);
+        body = checkFullBody(newFrame.landmarks);
       }
     }
-    if (now - lastSeen > THRESHOLDS.personLostMs) status = 'noPerson';
+    if (now - lastSeen > THRESHOLDS.personLostMs) body = 'noPerson';
 
     fpsCount++;
     if (now - fpsStart >= 1000) {
@@ -64,26 +75,44 @@ function runLoop(tracker: PoseTracker): void {
       fpsCount = 0;
     }
 
-    const bg = ctx.createLinearGradient(0, 0, 0, viewH);
-    bg.addColorStop(0, '#4a2fb0');
-    bg.addColorStop(1, '#2b1d6b');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, viewW, viewH);
-    drawCameraView(ctx, video, frame, { x: 0, y: 0, w: viewW, h: viewH }, { dim: 0.15, showIndices: isDebug });
+    const t: Tick = { now, dt: Math.min((now - lastNow) / 1000, 0.1), frame, newFrame, body };
+    lastNow = now;
 
-    statusEl.textContent = STATUS_TEXT[status];
-    statusEl.classList.toggle('ok', status === 'ok');
-
-    debug.update(
-      { renderFps, tracker: tracker.stats, frame, fullBody: status, video, device: deviceFeatures },
-      now,
-    );
+    const scene = app.scene;
+    if (scene) {
+      scene.update(t);
+      // update 중에 장면이 바뀌었으면 새 장면을 그린다
+      const current = app.scene!;
+      current.draw(gfx, t);
+      const status = current.status?.(t) ?? null;
+      statusEl.hidden = status === null;
+      if (status !== null) {
+        statusEl.textContent = status;
+        statusEl.classList.toggle('ok', body === 'ok');
+      }
+      debug.update(
+        {
+          renderFps,
+          tracker: tracker.stats,
+          frame,
+          fullBody: body,
+          video,
+          device: deviceFeatures,
+          extra: current.debugLines?.() ?? [],
+          koreanVoice: hasKoreanVoice(),
+        },
+        now,
+      );
+    }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 }
 
 startBtn.addEventListener('click', async () => {
+  // 소리·음성 잠금 해제는 await 전에, 터치 이벤트 안에서 바로 해야 한다.
+  unlockAudio();
+  unlockSpeech();
   startBtn.disabled = true;
   startMsg.textContent = '카메라를 켜는 중…';
   await enterPlayMode();
@@ -110,6 +139,6 @@ startBtn.addEventListener('click', async () => {
   }
 
   startOverlay.hidden = true;
-  statusEl.hidden = false;
+  app.goto(new ReadyScene(flow));
   runLoop(tracker);
 });
